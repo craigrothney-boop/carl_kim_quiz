@@ -1,0 +1,13 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "questions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "subject", "order": "ASCENDING" },
+        { "fieldPath": "targetYear", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
