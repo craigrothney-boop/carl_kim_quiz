@@ -277,18 +277,18 @@ export function QuizPlayer() {
     questions.length > 0 ? (progress / questions.length) * 100 : 0;
 
   return (
-    <div className="mx-auto grid w-full max-w-6xl grid-cols-12 items-center gap-8 overflow-visible">
-      {/* Mascot wing — wider column; image may extend past its flow box (no clipping) */}
-      <div className="relative z-0 col-span-6 flex min-h-0 justify-center overflow-visible">
-        <div className="relative w-full max-w-xl shrink-0">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 overflow-visible md:flex-row md:items-start md:gap-8 lg:gap-10">
+      {/* Mascot: below question on small screens; left column from md up */}
+      <div className="relative z-0 order-2 mt-[-20px] flex min-h-0 min-w-0 justify-center overflow-visible md:order-1 md:mt-0 md:basis-0 md:flex-1">
+        <div className="relative w-full max-w-[min(100%,280px)] shrink-0 sm:max-w-xs md:max-w-xl">
           <Image
             src={mascotSrc}
             alt={mascotAlt}
             width={mascotSrc.width}
             height={mascotSrc.height}
-            sizes="(max-width: 1280px) 50vw, 520px"
+            sizes="(max-width: 767px) 280px, (max-width: 1280px) 50vw, 520px"
             priority={index === 0}
-            className="h-auto w-full object-contain transition-opacity duration-300 ease-out"
+            className="h-auto w-full max-h-[min(38vh,260px)] object-contain transition-opacity duration-300 ease-out md:max-h-none"
             style={{
               opacity: mascotOpacity,
               filter: "drop-shadow(0 20px 13px rgb(0 0 0 / 0.15))",
@@ -298,11 +298,11 @@ export function QuizPlayer() {
         </div>
       </div>
 
-      {/* Question wing — stacks above mascot where they meet */}
+      {/* Question card first on mobile for reading order; right column from md up */}
       <div
         className={[
-          "relative z-20 col-span-6 min-w-0 rounded-2xl border border-kim-navy/15 bg-white p-6 shadow-sm",
-          "shadow-inner",
+          "relative z-20 order-1 min-w-0 w-full rounded-2xl border border-kim-navy/15 bg-white p-4 shadow-sm sm:p-6",
+          "shadow-inner md:order-2 md:min-w-0 md:flex-1 md:basis-0",
         ].join(" ")}
       >
         {/* Read aloud — microphone in top-right corner of question card */}
@@ -386,7 +386,7 @@ export function QuizPlayer() {
             <ProgressStars total={questions.length} answers={answers} />
           </div>
 
-          <h2 className="mt-3 text-lg font-semibold text-kim-navy sm:mt-4 sm:text-xl">
+          <h2 className="mt-3 text-base font-semibold leading-snug text-kim-navy sm:mt-4 sm:text-lg md:text-xl">
             {current.prompt}
           </h2>
 
@@ -410,7 +410,7 @@ export function QuizPlayer() {
                 key={`slot-${index}-opt-${i}`}
                 type="button"
                 onClick={() => choose(i)}
-                className={`rounded-xl border px-3 py-3 text-left text-sm transition ${
+                className={`min-h-[48px] rounded-xl border px-3 py-3 text-left text-sm leading-snug transition active:scale-[0.99] sm:min-h-0 ${
                   answered === i
                     ? "border-carl-green bg-carl-green/10 text-kim-navy"
                     : "border-kim-navy/15 hover:border-kim-navy/35"
