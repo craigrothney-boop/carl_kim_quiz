@@ -1,5 +1,12 @@
 import type { QuestionRow } from "@/lib/firestore-repo";
 
+/**
+ * Lowercase; strip everything except a-z0-9 — exact-text fingerprint for one quiz run.
+ */
+export function normalizePrompt(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 /** Normalise a topic tag for stable Set comparisons (lowercase snake_case). */
 export function normalizeTopicTag(raw: string): string {
   const s = raw.trim().toLowerCase();

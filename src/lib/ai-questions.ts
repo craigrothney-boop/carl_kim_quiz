@@ -5,7 +5,7 @@ import {
 } from "@google/generative-ai";
 import { z } from "zod";
 import { createQuestion } from "@/lib/firestore-repo";
-import { normalizeTopicTag } from "@/lib/question-topic";
+import { normalizePrompt, normalizeTopicTag } from "@/lib/question-topic";
 import type { Subject } from "@/types/app";
 
 const itemSchema = z.object({
@@ -156,6 +156,7 @@ Batch variety (this batch has ${count} questions): You must cover a balanced spr
 
 const MAX_PROMPTS_IN_LIST = 40;
 const MAX_TOPICS_IN_LIST = 60;
+const MAX_FINGERPRINTS_IN_LIST = 80;
 const MAX_PROMPT_CHARS = 420;
 
 function truncatePromptLine(s: string): string {
@@ -199,14 +200,35 @@ Do not use any topic tag that appears in the following list — these topic area
 ${listed}`;
 }
 
+/**
+ * Hard negative constraints: normalized prompt fingerprints already in this quiz run.
+ * The model must not produce wording that collapses to the same fingerprint (exact text identity).
+ */
+function buildNegativeFingerprintsBlock(fingerprints: string[]): string {
+  const unique = [
+    ...new Set(fingerprints.map((f) => f.trim().toLowerCase()).filter((f) => f.length > 0)),
+  ].slice(0, MAX_FINGERPRINTS_IN_LIST);
+  if (unique.length === 0) return "";
+
+  const listed = unique.map((f, i) => `${i + 1}. ${f}`).join("\n");
+  return `
+
+Negative constraints (fingerprint deduplication): Each line below is a "fingerprint" — the question prompt lowercased with all spaces and punctuation removed, leaving only letters and digits concatenated. You MUST NOT write any question whose prompt would produce the same fingerprint as any entry below. Do not paraphrase lightly to sneak past this list: change the underlying task or numbers so the fingerprint is genuinely different.
+
+${listed}`;
+}
+
 /** System instruction depends on subject: Maths → Carl, GK → Kim (must match generation slot). */
 function buildSystemInstruction(
   subject: Subject,
   targetYear: number,
   existingPrompts: string[],
   existingTopicTags: string[],
+  existingPromptFingerprints: string[],
 ): string {
   const topicRules = `Each question object must include a "topic" string: lowercase words separated by underscores (snake_case), 2–64 characters, describing the factual theme only (no mascot names in the tag). Every topic in this batch must be unique and must not match any tag in the "already used" list below.`;
+
+  const fpBlock = buildNegativeFingerprintsBlock(existingPromptFingerprints);
 
   if (subject === "MATHS") {
     return `You are Carl, the maths mascot for this quiz app. Stay in Carl's persona for every question in this batch—do not switch to Kim.
@@ -215,7 +237,7 @@ Carl is energetic and positive about numbers and reasoning. He uses short, natur
 
 ${topicRules}
 
-${SHARED_RULES}${buildMathsCurriculumBlock(targetYear)}${buildAvoidSimilarPromptsBlock(existingPrompts)}${buildAvoidUsedTopicTagsBlock(existingTopicTags)}`;
+${SHARED_RULES}${buildMathsCurriculumBlock(targetYear)}${buildAvoidSimilarPromptsBlock(existingPrompts)}${buildAvoidUsedTopicTagsBlock(existingTopicTags)}${fpBlock}`;
   }
 
   return `You are Kim, the general-knowledge mascot for this quiz app. Stay in Kim's persona for every question in this batch—do not switch to Carl.
@@ -224,7 +246,7 @@ Kim is curious and enthusiastic about facts. She uses warm phrases like "Did you
 
 ${topicRules}
 
-${SHARED_RULES}${buildAvoidSimilarPromptsBlock(existingPrompts)}${buildAvoidUsedTopicTagsBlock(existingTopicTags)}`;
+${SHARED_RULES}${buildAvoidSimilarPromptsBlock(existingPrompts)}${buildAvoidUsedTopicTagsBlock(existingTopicTags)}${fpBlock}`;
 }
 
 function getGenAI(): GoogleGenerativeAI | null {
@@ -241,6 +263,11 @@ export async function generateAndStoreQuestions(params: {
   existingPromptsInQuiz?: string[];
   /** Normalised topic tags already used in this quiz (must not repeat). */
   existingTopicsInQuiz?: string[];
+  /**
+   * Normalized prompt fingerprints already in this quiz (see normalizePrompt in question-topic).
+   * Passed to the model as negative constraints; stored rows must not match these.
+   */
+  existingPromptFingerprints?: string[];
 }): Promise<string[]> {
   const genAI = getGenAI();
   if (!genAI) {
@@ -264,6 +291,7 @@ export async function generateAndStoreQuestions(params: {
 
   const existingPrompts = params.existingPromptsInQuiz ?? [];
   const existingTopics = params.existingTopicsInQuiz ?? [];
+  const existingFingerprints = params.existingPromptFingerprints ?? [];
 
   const mathsBatchExtra =
     params.subject === "MATHS"
@@ -283,6 +311,7 @@ Return a single JSON object: {"questions":[{"topic","prompt","optionA","optionB"
       params.targetYear,
       existingPrompts,
       existingTopics,
+      existingFingerprints,
     ),
   });
 
@@ -303,14 +332,19 @@ Return a single JSON object: {"questions":[{"topic","prompt","optionA","optionB"
 
   const parsed = batchSchema.parse(JSON.parse(raw));
 
-  const blocked = new Set(existingTopics.map((t) => normalizeTopicTag(t)));
+  const blockedTopics = new Set(existingTopics.map((t) => normalizeTopicTag(t)));
+  const blockedFingerprints = new Set(
+    existingFingerprints.map((f) => normalizePrompt(f)).filter((f) => f.length > 0),
+  );
   const ids: string[] = [];
 
   for (const q of parsed.questions) {
     if (ids.length >= params.count) break;
     const tag = normalizeTopicTag(q.topic);
-    if (!tag || blocked.has(tag)) continue;
-    blocked.add(tag);
+    const fp = normalizePrompt(q.prompt);
+    if (!tag || blockedTopics.has(tag) || blockedFingerprints.has(fp)) continue;
+    blockedTopics.add(tag);
+    blockedFingerprints.add(fp);
 
     const id = await createQuestion({
       subject: params.subject,

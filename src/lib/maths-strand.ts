@@ -1,5 +1,5 @@
 import type { QuestionRow } from "@/lib/firestore-repo";
-import { topicKeyFromQuestion } from "@/lib/question-topic";
+import { normalizePrompt, topicKeyFromQuestion } from "@/lib/question-topic";
 
 /** Broad numeracy “strand” for balancing maths picks in a quiz. */
 export type MathsStrand =
@@ -192,10 +192,14 @@ export function pickDiverseMathsQuestions(
   count: number,
   centerYear: number,
   forbiddenTopicKeys: Set<string>,
+  /** Prompt fingerprints already used in this quiz (e.g. from GK slots). */
+  forbiddenFingerprints: Set<string>,
 ): QuestionRow[] {
-  const usable = candidates.filter(
-    (q) => !forbiddenTopicKeys.has(topicKeyFromQuestion(q)),
-  );
+  const usable = candidates.filter((q) => {
+    if (forbiddenTopicKeys.has(topicKeyFromQuestion(q))) return false;
+    if (forbiddenFingerprints.has(normalizePrompt(q.prompt))) return false;
+    return true;
+  });
   shuffleInPlace(usable);
 
   const byStrand = new Map<MathsStrand, QuestionRow[]>();
@@ -208,7 +212,8 @@ export function pickDiverseMathsQuestions(
 
   const order = strandPriorityForYear(centerYear);
   const picked: QuestionRow[] = [];
-  const used = new Set<string>(forbiddenTopicKeys);
+  const usedTopics = new Set<string>(forbiddenTopicKeys);
+  const usedFingerprints = new Set<string>(forbiddenFingerprints);
 
   const takeFromStrand = (s: MathsStrand): boolean => {
     const pool = byStrand.get(s);
@@ -216,9 +221,11 @@ export function pickDiverseMathsQuestions(
     while (pool.length) {
       const q = pool.shift()!;
       const tk = topicKeyFromQuestion(q);
-      if (used.has(tk)) continue;
+      const fp = normalizePrompt(q.prompt);
+      if (usedTopics.has(tk) || usedFingerprints.has(fp)) continue;
       picked.push(q);
-      used.add(tk);
+      usedTopics.add(tk);
+      usedFingerprints.add(fp);
       return true;
     }
     return false;
@@ -240,9 +247,11 @@ export function pickDiverseMathsQuestions(
   for (const q of remaining) {
     if (picked.length >= count) break;
     const tk = topicKeyFromQuestion(q);
-    if (used.has(tk)) continue;
+    const fp = normalizePrompt(q.prompt);
+    if (usedTopics.has(tk) || usedFingerprints.has(fp)) continue;
     picked.push(q);
-    used.add(tk);
+    usedTopics.add(tk);
+    usedFingerprints.add(fp);
   }
 
   return picked;
