@@ -1,5 +1,6 @@
 import { primaryClassToYear, targetYearPriority } from "@/lib/primary-year";
 import { generateAndStoreQuestions } from "@/lib/ai-questions";
+import { pickDiverseMathsQuestions } from "@/lib/maths-strand";
 import { topicKeyFromQuestion } from "@/lib/question-topic";
 import {
   createQuizAttemptWithGkSeen,
@@ -130,6 +131,19 @@ async function ensureGkCount(
   return pool;
 }
 
+async function loadMathsCandidatePool(
+  yearPriority: number[],
+): Promise<QuestionRow[]> {
+  const byId = new Map<string, QuestionRow>();
+  for (const y of yearPriority) {
+    const batch = await listQuestionsBySubjectAndYear("MATHS", y, 400);
+    for (const row of batch) {
+      if (!byId.has(row.id)) byId.set(row.id, row);
+    }
+  }
+  return [...byId.values()];
+}
+
 async function pickMathsQuestions(
   yearPriority: number[],
   centerYear: number,
@@ -138,69 +152,78 @@ async function pickMathsQuestions(
   /** Topic keys from GK slots so maths questions do not repeat those themes. */
   gkTopicKeys: string[],
 ): Promise<QuestionRow[]> {
-  const picked: QuestionRow[] = [];
-  const usedIds = new Set<string>();
   const usedTopics = new Set<string>(gkTopicKeys);
+  const usedIds = new Set<string>();
 
-  for (let i = 0; i < MATHS_COUNT; i++) {
+  let pool = await loadMathsCandidatePool(yearPriority);
+  let picked = pickDiverseMathsQuestions(
+    pool,
+    MATHS_COUNT,
+    centerYear,
+    usedTopics,
+  );
+  for (const q of picked) {
+    usedIds.add(q.id);
+    usedTopics.add(topicKeyFromQuestion(q));
+  }
+
+  if (picked.length < MATHS_COUNT) {
+    const broad = await listQuestionsBySubject("MATHS", 4000);
+    const merged = new Map<string, QuestionRow>();
+    for (const q of pool) merged.set(q.id, q);
+    for (const q of broad) {
+      if (!merged.has(q.id)) merged.set(q.id, q);
+    }
+    pool = [...merged.values()];
+    const block = new Set(usedTopics);
+    const more = pickDiverseMathsQuestions(
+      pool.filter((q) => !usedIds.has(q.id)),
+      MATHS_COUNT - picked.length,
+      centerYear,
+      block,
+    );
+    for (const q of more) {
+      if (picked.length >= MATHS_COUNT) break;
+      picked.push(q);
+      usedIds.add(q.id);
+      usedTopics.add(topicKeyFromQuestion(q));
+    }
+  }
+
+  while (picked.length < MATHS_COUNT) {
     let q: QuestionRow | null = null;
-
-    for (const y of yearPriority) {
-      const batch = await listQuestionsBySubjectAndYear("MATHS", y, 400);
-      const available = batch.filter(
-        (row) =>
-          !usedIds.has(row.id) &&
-          !usedTopics.has(topicKeyFromQuestion(row)),
-      );
-      if (available.length === 0) continue;
-      q = available[Math.floor(Math.random() * available.length)]!;
-      break;
-    }
-
-    if (!q) {
-      const broad = await listQuestionsBySubject("MATHS", 4000);
-      const available = broad.filter(
-        (row) =>
-          !usedIds.has(row.id) &&
-          !usedTopics.has(topicKeyFromQuestion(row)),
-      );
-      if (available.length > 0) {
-        q = available[Math.floor(Math.random() * available.length)]!;
+    let genAttempts = 0;
+    while (!q && genAttempts < 6) {
+      genAttempts++;
+      const newIds = await generateAndStoreQuestions({
+        subject: "MATHS",
+        targetYear: centerYear,
+        count: 4,
+        existingPromptsInQuiz: [
+          ...gkPromptsInQuiz,
+          ...picked.map((row) => row.prompt),
+        ],
+        existingTopicsInQuiz: [...usedTopics],
+      });
+      const loaded = await getQuestionsByIds(newIds);
+      for (const id of newIds) {
+        if (usedIds.has(id)) continue;
+        const row = loaded.get(id);
+        if (!row) continue;
+        const tk = topicKeyFromQuestion(row);
+        if (usedTopics.has(tk)) continue;
+        q = row;
+        break;
       }
     }
-
     if (!q) {
-      let genAttempts = 0;
-      while (!q && genAttempts < 6) {
-        genAttempts++;
-        const newIds = await generateAndStoreQuestions({
-          subject: "MATHS",
-          targetYear: centerYear,
-          count: 4,
-          existingPromptsInQuiz: [
-            ...gkPromptsInQuiz,
-            ...picked.map((row) => row.prompt),
-          ],
-          existingTopicsInQuiz: [...usedTopics],
-        });
-        const loaded = await getQuestionsByIds(newIds);
-        for (const id of newIds) {
-          if (usedIds.has(id)) continue;
-          const row = loaded.get(id);
-          if (!row) continue;
-          const tk = topicKeyFromQuestion(row);
-          if (usedTopics.has(tk)) continue;
-          q = row;
-          break;
-        }
-      }
-      if (!q) throw new Error("Could not assemble five unique maths questions.");
+      throw new Error("Could not assemble five unique maths questions.");
     }
-
     usedIds.add(q.id);
     usedTopics.add(topicKeyFromQuestion(q));
     picked.push(q);
   }
+
   return picked;
 }
 

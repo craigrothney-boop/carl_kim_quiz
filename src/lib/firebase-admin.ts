@@ -33,7 +33,7 @@ function loadEnvFiles(): void {
   }
 }
 
-/** Resolve relative paths so `GOOGLE_APPLICATION_CREDENTIALS=../key.json` works from `primary-quiz/`. */
+/** Resolve relative paths so `GOOGLE_APPLICATION_CREDENTIALS=./key.json` works from the project root. */
 function absolutizeGoogleCredentialsEnv(): void {
   const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
   if (!raw) return;

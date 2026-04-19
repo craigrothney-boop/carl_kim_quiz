@@ -1213,6 +1213,143 @@ function gkForYear(year: number): GkQ[] {
   }
 }
 
+/** Extra numeracy drills per year — balanced strands (not 30× addition). */
+function extraMathsDrillsForYear(y: number): Row[] {
+  const label = `p${y}`;
+  const out: Row[] = [];
+
+  for (let k = 0; k < 5; k++) {
+    const a = y + k + 3;
+    const b = y + 1 + (k % 3);
+    out.push(
+      maths(y, {
+        topic: `${label}_drill_add_${k}`,
+        prompt: `What is ${a} + ${b}?`,
+        optionA: String(a + b + 1),
+        optionB: String(a + b),
+        optionC: String(a + b - 1),
+        optionD: String(a + b + 2),
+        correct: "B",
+      }),
+    );
+  }
+
+  for (let k = 0; k < 5; k++) {
+    const a = 18 + y * 4 + k;
+    const b = y + k + 2;
+    out.push(
+      maths(y, {
+        topic: `${label}_drill_sub_${k}`,
+        prompt: `What is ${a} − ${b}?`,
+        optionA: String(a - b - 1),
+        optionB: String(a - b),
+        optionC: String(a - b + 1),
+        optionD: String(a - b + 2),
+        correct: "B",
+      }),
+    );
+  }
+
+  for (let k = 0; k < 5; k++) {
+    let left: number;
+    let right: number;
+    if (y <= 2) {
+      left = 2 + (k % 2);
+      right = 2 + ((y + k) % 4);
+    } else {
+      left = Math.min(12, y + 1 + k);
+      right = Math.min(12, y + (k % 3));
+    }
+    const prod = left * right;
+    out.push(
+      maths(y, {
+        topic: `${label}_drill_mul_${k}`,
+        prompt: `What is ${left} × ${right}?`,
+        optionA: String(prod + (k % 3) + 1),
+        optionB: String(prod),
+        optionC: String(Math.max(0, prod - 2 - k)),
+        optionD: String(prod + 3),
+        correct: "B",
+      }),
+    );
+  }
+
+  for (let k = 0; k < 5; k++) {
+    let divisor: number;
+    let quot: number;
+    if (y <= 2) {
+      divisor = 2;
+      quot = 2 + k;
+    } else {
+      divisor = Math.max(2, y + (k % 4));
+      quot = y + 3 + k;
+    }
+    const dividend = quot * divisor;
+    out.push(
+      maths(y, {
+        topic: `${label}_drill_div_${k}`,
+        prompt: `What is ${dividend} ÷ ${divisor}?`,
+        optionA: String(quot + 1),
+        optionB: String(quot),
+        optionC: String(Math.max(1, quot - 1)),
+        optionD: String(quot + 2),
+        correct: "B",
+      }),
+    );
+  }
+
+  const misc: Row[] = [
+    maths(y, {
+      topic: `${label}_drill_compare_${y}`,
+      prompt: `Which is bigger: ${y + 4} or ${y + 9}?`,
+      optionA: String(y + 4),
+      optionB: String(y + 9),
+      optionC: "They are equal",
+      optionD: "Cannot tell",
+      correct: "B",
+    }),
+    maths(y, {
+      topic: `${label}_drill_half_${y}`,
+      prompt: `What is half of ${(y + 3) * 2}?`,
+      optionA: String(y + 2),
+      optionB: String(y + 3),
+      optionC: String(y + 4),
+      optionD: String(y + 5),
+      correct: "B",
+    }),
+    maths(y, {
+      topic: `${label}_drill_shape_${y}`,
+      prompt: "How many sides does a rectangle have?",
+      optionA: "3",
+      optionB: "4",
+      optionC: "5",
+      optionD: "6",
+      correct: "B",
+    }),
+    maths(y, {
+      topic: `${label}_drill_round_${y}`,
+      prompt: `Round ${y * 10 + 7} to the nearest 10.`,
+      optionA: String(Math.round((y * 10 + 7) / 10) * 10 - 10),
+      optionB: String(Math.round((y * 10 + 7) / 10) * 10),
+      optionC: String(y * 10 + 5),
+      optionD: String(y * 10 + 7),
+      correct: "B",
+    }),
+    maths(y, {
+      topic: `${label}_drill_word_mul_${y}`,
+      prompt: `A pencil costs ${y + 2}p. How much do ${y <= 3 ? 2 : 3} pencils cost?`,
+      optionA: String((y + 2) * (y <= 3 ? 2 : 3) + 2),
+      optionB: String((y + 2) * (y <= 3 ? 2 : 3)),
+      optionC: String((y + 2) * (y <= 3 ? 2 : 3) - 1),
+      optionD: String((y + 2) * (y <= 3 ? 2 : 3) + 5),
+      correct: "B",
+    }),
+  ];
+  out.push(...misc);
+
+  return out;
+}
+
 async function main() {
   const rows: Row[] = [];
 
@@ -1266,20 +1403,7 @@ async function main() {
         correct: "B",
       }),
     );
-    for (let k = 0; k < 30; k++) {
-      const a = y + k + 1;
-      const b = y + 2;
-      rows.push(
-        maths(y, {
-          prompt: `What is ${a} + ${b}?`,
-          optionA: String(a + b + 1),
-          optionB: String(a + b),
-          optionC: String(a + b - 1),
-          optionD: String(a + b + 2),
-          correct: "B",
-        }),
-      );
-    }
+    rows.push(...extraMathsDrillsForYear(y));
   }
 
   const db = getAdminDb();
